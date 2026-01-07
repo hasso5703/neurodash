@@ -32,7 +32,19 @@ class AdvancedSystemMonitor:
         self.gpu_handle = None
         self.gpu_name = "N/A"
         self.driver_version = "N/A"
+        self.cpu_model = "Unknown CPU"
 
+        try:
+            with open('/proc/cpuinfo', 'r') as f:
+                for line in f:
+                    if "model name" in line:
+                        raw_name = line.split(":")[1].strip()
+                        self.cpu_model = raw_name.replace("(R)", "").replace("(TM)", "").replace(" CPU", "")
+                        break
+        except:
+            self.cpu_model = platform.processor()
+
+        # 2. NVIDIA Init
         if HAS_NVIDIA_LIB:
             try:
                 pynvml.nvmlInit()
@@ -50,7 +62,6 @@ class AdvancedSystemMonitor:
         self.history[key].append(value)
 
     def get_top_processes(self, limit=5):
-        """Identifies top resource-consuming processes."""
         procs = []
         try:
             for p in psutil.process_iter(['pid', 'name', 'username', 'memory_percent', 'cpu_percent']):
@@ -61,28 +72,26 @@ class AdvancedSystemMonitor:
                     pass
         except Exception:
             pass
-        
-        # Sort by Memory usage descending
         procs.sort(key=lambda x: x['memory_percent'], reverse=True)
         return procs[:limit]
 
     def get_full_stats(self):
-        # --- SYSTEM ---
-        cpu_global_percent = psutil.cpu_percent(interval=None)
-        cpu_per_core = psutil.cpu_percent(interval=None, percpu=True)
+        cpu_global = psutil.cpu_percent(interval=None)
+        cpu_cores = psutil.cpu_percent(interval=None, percpu=True)
         ram = psutil.virtual_memory()
         swap = psutil.swap_memory()
         disk = psutil.disk_usage('/')
 
-        self._update_history("cpu_util", cpu_global_percent)
+        self._update_history("cpu_util", cpu_global)
         self._update_history("ram_util", ram.percent)
 
         stats = {
             "os": f"{platform.system()} {platform.release()}",
             "cpu": {
-                "global_usage": cpu_global_percent,
+                "model": self.cpu_model,
+                "global_usage": cpu_global,
                 "history": self.history["cpu_util"],
-                "cores": cpu_per_core,
+                "cores": cpu_cores,
                 "count_physical": psutil.cpu_count(logical=False),
                 "count_logical": psutil.cpu_count(logical=True)
             },
@@ -104,29 +113,22 @@ class AdvancedSystemMonitor:
             "gpu": None
         }
 
-        # --- GPU NVIDIA ---
         if self.has_gpu:
             try:
                 util = pynvml.nvmlDeviceGetUtilizationRates(self.gpu_handle)
                 mem = pynvml.nvmlDeviceGetMemoryInfo(self.gpu_handle)
                 temp = pynvml.nvmlDeviceGetTemperature(self.gpu_handle, pynvml.NVML_TEMPERATURE_GPU)
                 fan = pynvml.nvmlDeviceGetFanSpeed(self.gpu_handle)
-                
-                # Power
                 try:
                     power_w = pynvml.nvmlDeviceGetPowerUsage(self.gpu_handle) / 1000.0
-                    power_limit_w = pynvml.nvmlDeviceGetEnforcedPowerLimit(self.gpu_handle) / 1000.0
+                    power_lim = pynvml.nvmlDeviceGetEnforcedPowerLimit(self.gpu_handle) / 1000.0
                 except: 
-                    power_w = 0
-                    power_limit_w = 0
-
-                # PCIe Throughput
+                    power_w, power_lim = 0, 0
                 try:
-                    pcie_tx = pynvml.nvmlDeviceGetPcieThroughput(self.gpu_handle, pynvml.NVML_PCIE_UTIL_TX_BYTES) / (1024**2)
-                    pcie_rx = pynvml.nvmlDeviceGetPcieThroughput(self.gpu_handle, pynvml.NVML_PCIE_UTIL_RX_BYTES) / (1024**2)
+                    tx = pynvml.nvmlDeviceGetPcieThroughput(self.gpu_handle, pynvml.NVML_PCIE_UTIL_TX_BYTES) / (1024**2)
+                    rx = pynvml.nvmlDeviceGetPcieThroughput(self.gpu_handle, pynvml.NVML_PCIE_UTIL_RX_BYTES) / (1024**2)
                 except:
-                    pcie_tx = 0
-                    pcie_rx = 0
+                    tx, rx = 0, 0
 
                 self._update_history("gpu_util", util.gpu)
 
@@ -142,12 +144,11 @@ class AdvancedSystemMonitor:
                     "temp_c": temp,
                     "fan_percent": fan,
                     "power_w": round(power_w, 0),
-                    "power_limit_w": round(power_limit_w, 0),
-                    "pcie_tx_mb": round(pcie_tx, 0),
-                    "pcie_rx_mb": round(pcie_rx, 0)
+                    "power_limit_w": round(power_lim, 0),
+                    "pcie_tx_mb": round(tx, 0),
+                    "pcie_rx_mb": round(rx, 0)
                 }
-            except Exception as e:
-                 print(f"GPU Read Error: {e}")
+            except:
                  self.has_gpu = False
         else:
             stats["gpu"] = {"available": False}
@@ -156,14 +157,14 @@ class AdvancedSystemMonitor:
 
 monitor = AdvancedSystemMonitor()
 
-# --- FRONTEND HTML/CSS/JS ---
+# --- FRONTEND ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Infrastructure Monitor</title>
+    <title>NeuroDash // AI Monitor</title>
     <style>
         :root {
             --bg-main: #0a0a0a;
@@ -175,6 +176,7 @@ HTML_TEMPLATE = """
             --text-dim: #888888;
             --danger: #ff3333;
         }
+        * { box-sizing: border-box; } 
         body {
             background-color: var(--bg-main);
             color: var(--text-bright);
@@ -184,21 +186,20 @@ HTML_TEMPLATE = """
             overflow-x: hidden;
         }
         
-        /* Header */
+        /* HEADER */
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 0 10px;}
         .header h1 { margin: 0; font-size: 1.5rem; text-transform: uppercase; letter-spacing: 2px;}
         .header .sub-info { font-size: 0.8rem; color: var(--text-dim); text-align: right;}
 
-        /* Grid Layout */
         .dashboard-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
             gap: 25px;
             max-width: 1400px;
             margin: 0 auto;
+            width: 100%;
         }
 
-        /* Cards */
         .card {
             background-color: var(--bg-card);
             border-radius: 8px;
@@ -213,10 +214,11 @@ HTML_TEMPLATE = """
             display: flex; justify-content: space-between; align-items: center;
             margin-bottom: 20px; border-bottom: 1px solid #222; padding-bottom: 10px;
         }
-        .card-title { font-size: 1.1rem; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim);}
-        .card-subtitle { font-size: 0.9rem; color: var(--nvidia-green); font-weight: bold;}
+        .card-title { font-size: 1.1rem; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); white-space: nowrap;}
+        
+        /* Subtitle aligné à droite et propre */
+        .card-subtitle { font-size: 0.9rem; color: var(--nvidia-green); font-weight: bold; text-align: right;}
 
-        /* Visual Layouts */
         .split-layout { display: flex; justify-content: space-between; align-items: center; height: 100%;}
         .gauge-side { width: 40%; display: flex; flex-direction: column; align-items: center; position: relative;}
         
@@ -229,14 +231,12 @@ HTML_TEMPLATE = """
         canvas.graph { width: 100%; height: 100px; }
         .graph-label {font-size: 0.75rem; color: var(--text-dim); margin-bottom: 5px; text-transform: uppercase;}
 
-        /* Metrics Grid */
         .metrics-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: 15px;}
         .metric-box { background: #1a1a1a; padding: 10px; border-radius: 6px; text-align: center; border: 1px solid #2a2a2a;}
         .metric-box .label { font-size: 0.7rem; color: var(--text-dim); display: block; margin-bottom: 5px;}
         .metric-box .value { font-size: 1.2rem; font-weight: bold; color: var(--text-bright);}
         .metric-box .unit { font-size: 0.8rem; color: var(--nvidia-green);}
 
-        /* CPU Cores */
         .cpu-cores-grid {
             display: grid; grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
             gap: 4px; margin-top: 15px; height: 80px;
@@ -244,11 +244,9 @@ HTML_TEMPLATE = """
         .core-bar-container { background-color: #111; height: 100%; width: 100%; position: relative; overflow: hidden;}
         .core-bar-fill { position: absolute; bottom: 0; left:0; width: 100%; background-color: var(--nvidia-green); transition: height 0.3s ease;}
         
-        /* Storage */
         .storage-section { margin-top: 20px; display: flex; gap: 20px;}
         .mini-gauge-container { text-align: center; width: 50%; background: #1a1a1a; padding: 15px; border-radius: 8px;}
 
-        /* Process Table */
         table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 10px; }
         th { text-align: left; color: var(--text-dim); border-bottom: 1px solid #333; padding: 8px 0; font-size: 0.75rem;}
         td { padding: 6px 0; border-bottom: 1px solid #222; }
@@ -256,18 +254,22 @@ HTML_TEMPLATE = """
         .proc-name { color: #fff; }
 
         @media (max-width: 768px) {
+            body { padding: 10px; } 
             .dashboard-grid { grid-template-columns: 1fr; }
+            .card-header { flex-direction: column; align-items: flex-start; gap: 5px; }
+            .card-subtitle { text-align: left; margin-top: 2px; word-break: break-word; }
             .split-layout { flex-direction: column; }
             .gauge-side { width: 100%; margin-bottom: 20px;}
             .big-value-container { position: static; transform: none; margin-top: -40px; margin-bottom: 20px;}
             .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+            .card { padding: 15px; }
         }
     </style>
 </head>
 <body>
 
     <div class="header">
-        <h1>AI WORKSTATION MONITOR</h1>
+        <h1><span style="color: var(--nvidia-green)">AI</span> WORKSTATION MONITOR</h1>
         <div class="sub-info" id="osInfo">Initializing...</div>
     </div>
 
@@ -278,7 +280,6 @@ HTML_TEMPLATE = """
                 <span class="card-title">GPU Accelerator</span>
                 <span class="card-subtitle" id="gpuName">No GPU Detected</span>
             </div>
-            
             <div class="split-layout">
                 <div class="gauge-side">
                     <canvas id="gpuUtilGauge" class="gauge" width="180" height="180"></canvas>
@@ -295,7 +296,6 @@ HTML_TEMPLATE = """
                      </div>
                 </div>
             </div>
-
             <div class="metrics-grid">
                 <div class="metric-box">
                     <span class="label">TEMP</span>
@@ -333,7 +333,6 @@ HTML_TEMPLATE = """
                 <span class="card-title">Processor & Memory</span>
                 <span class="card-subtitle" id="cpuCountInfo">Cores</span>
             </div>
-
              <div class="split-layout">
                 <div class="gauge-side">
                     <canvas id="cpuGauge" class="gauge" width="180" height="180"></canvas>
@@ -350,12 +349,10 @@ HTML_TEMPLATE = """
                     </div>
                 </div>
             </div>
-
              <div style="margin-top:15px;">
                  <div class="graph-label">CPU History (60s)</div>
                  <canvas id="cpuGraph" class="graph" width="400" height="80"></canvas>
              </div>
-
             <div style="margin-top: 20px;">
                  <div class="graph-label" style="margin-bottom: 5px;">Logical Core Load</div>
                  <div id="cpuCoresContainer" class="cpu-cores-grid"></div>
@@ -366,7 +363,6 @@ HTML_TEMPLATE = """
             <div class="card-header">
                 <span class="card-title">Storage & Processes</span>
             </div>
-            
             <div class="storage-section">
                 <div class="mini-gauge-container">
                      <div class="graph-label">Main SSD (/)</div>
@@ -381,7 +377,6 @@ HTML_TEMPLATE = """
                      <div class="sub-value"><span id="swapUsed">0</span> / <span id="swapTotal">0</span> GB</div>
                 </div>
             </div>
-
             <div style="margin-top: 25px; border-top: 1px solid #222; padding-top: 15px;">
                 <span class="card-title" style="font-size: 0.9rem;">Top Resource Consumers</span>
                 <table>
@@ -393,12 +388,10 @@ HTML_TEMPLATE = """
                             <th style="text-align:right">MEM</th>
                         </tr>
                     </thead>
-                    <tbody id="procTable">
-                        </tbody>
+                    <tbody id="procTable"></tbody>
                 </table>
             </div>
          </div>
-
     </div> 
 
 <script>
@@ -418,8 +411,6 @@ HTML_TEMPLATE = """
         const endAngle = 0; 
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        // Background
         ctx.beginPath();
         ctx.arc(cx, cy, radius, startAngle, endAngle);
         ctx.lineWidth = lineWidth;
@@ -427,7 +418,6 @@ HTML_TEMPLATE = """
         ctx.lineCap = 'round';
         ctx.stroke();
 
-        // Value
         if (percentage > 0) {
             const currentAngle = startAngle + (percentage / 100) * (endAngle - startAngle);
             ctx.beginPath();
@@ -448,15 +438,12 @@ HTML_TEMPLATE = """
         const padding = 5;
         
         ctx.clearRect(0, 0, width, height);
-        
         if (dataPoints.length < 2) return;
 
         ctx.beginPath();
         ctx.moveTo(0, height);
-        
         const step = width / (dataPoints.length - 1);
         
-        // Gradient
         let gradient = ctx.createLinearGradient(0, 0, 0, height);
         gradient.addColorStop(0, color + "66");
         gradient.addColorStop(1, color + "00"); 
@@ -471,7 +458,6 @@ HTML_TEMPLATE = """
         ctx.lineTo(width, height);
         ctx.fill();
 
-        // Line
         ctx.beginPath();
         for (let i = 0; i < dataPoints.length; i++) {
             const val = dataPoints[i];
@@ -506,18 +492,11 @@ HTML_TEMPLATE = """
         const tbody = document.getElementById('procTable');
         let html = '';
         procs.forEach(p => {
-            html += `
-            <tr>
-                <td>${p.username}</td>
-                <td class="proc-name">${p.name.substring(0, 20)}</td>
-                <td style="text-align:right">${p.cpu_percent.toFixed(0)}%</td>
-                <td style="text-align:right" class="proc-mem">${p.memory_percent.toFixed(1)}%</td>
-            </tr>`;
+            html += `<tr><td>${p.username}</td><td class="proc-name">${p.name.substring(0, 20)}</td><td style="text-align:right">${p.cpu_percent.toFixed(0)}%</td><td style="text-align:right" class="proc-mem">${p.memory_percent.toFixed(1)}%</td></tr>`;
         });
         tbody.innerHTML = html;
     }
 
-    // --- MAIN LOOP ---
     let isFirstLoad = true;
 
     async function updateDashboard() {
@@ -527,12 +506,15 @@ HTML_TEMPLATE = """
 
             if (isFirstLoad) {
                 document.getElementById('osInfo').innerText = data.os;
-                document.getElementById('cpuCountInfo').innerText = `${data.cpu.count_physical} Phys / ${data.cpu.count_logical} Log`;
+                document.getElementById('cpuCountInfo').innerHTML = `
+                    <div style="font-size:0.8rem; color:var(--text-bright); margin-bottom:2px;">${data.cpu.model}</div>
+                    ${data.cpu.count_physical} Phys / ${data.cpu.count_logical} Log
+                `;
+                
                 if (data.gpu.available) document.getElementById('gpuName').innerText = data.gpu.name;
                 isFirstLoad = false;
             }
 
-            // CPU & RAM
             drawGauge('cpuGauge', data.cpu.global_usage, NVIDIA_GREEN);
             document.getElementById('cpuVal').innerText = data.cpu.global_usage.toFixed(1);
             drawGraph('cpuGraph', data.cpu.history, GRAPH_BLUE);
@@ -542,7 +524,6 @@ HTML_TEMPLATE = """
             document.getElementById('ramVal').innerText = data.memory.ram_used_gb;
             document.getElementById('ramTotal').innerText = `of ${data.memory.ram_total_gb} GB`;
 
-            // Storage
             drawGauge('ssdGauge', data.storage.root_percent, NVIDIA_GREEN, true);
             document.getElementById('ssdVal').innerText = data.storage.root_percent;
             document.getElementById('ssdUsed').innerText = data.storage.root_used_gb;
@@ -553,22 +534,17 @@ HTML_TEMPLATE = """
             document.getElementById('swapUsed').innerText = data.memory.swap_used_gb;
             document.getElementById('swapTotal').innerText = data.memory.swap_total_gb;
 
-            // Processes
             updateProcessTable(data.processes);
 
-            // GPU
             const gpuCard = document.getElementById('gpuCard');
             if (data.gpu && data.gpu.available) {
                 gpuCard.style.opacity = "1";
                 drawGauge('gpuUtilGauge', data.gpu.utilization, NVIDIA_GREEN);
                 document.getElementById('gpuUtilVal').innerText = data.gpu.utilization;
-                
                 drawGauge('vramGauge', data.gpu.vram_percent, NVIDIA_GREEN);
                 document.getElementById('vramVal').innerText = data.gpu.vram_used_gb;
                 document.getElementById('vramTotal').innerText = `of ${data.gpu.vram_total_gb} GB`;
-
                 drawGraph('gpuGraph', data.gpu.history, GRAPH_BLUE);
-
                 document.getElementById('gpuTemp').innerText = data.gpu.temp_c;
                 document.getElementById('gpuPower').innerText = data.gpu.power_w;
                 document.getElementById('gpuFan').innerText = data.gpu.fan_percent;
@@ -576,16 +552,11 @@ HTML_TEMPLATE = """
                 document.getElementById('pcieTx').innerText = data.gpu.pcie_tx_mb;
                 document.getElementById('pcieRx').innerText = data.gpu.pcie_rx_mb;
             } else {
-                // Dim GPU card if inactive
                 gpuCard.style.opacity = "0.5";
                 document.getElementById('gpuName').innerText = "NO NVIDIA GPU";
             }
-
-        } catch (e) {
-            console.error("Update Error:", e);
-        }
+        } catch (e) { console.error(e); }
     }
-
     setInterval(updateDashboard, 1000);
     updateDashboard();
 </script>
