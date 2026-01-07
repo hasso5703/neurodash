@@ -36,8 +36,8 @@ This project uses **[uv](https://github.com/astral-sh/uv)** for ultra-fast depen
 
 ### 1. Clone the repository
 ```bash
-git clone [https://github.com/hasso5703/ai-monitor.git](https://github.com/hasso5703/ai-monitor.git)
-cd ai-monitor
+git clone [https://github.com/hasso5703/neurodash.git](https://github.com/hasso5703/neurodash.git)
+cd neurodash
 ```
 
 ### 2. Sync dependencies
