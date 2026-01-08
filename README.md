@@ -8,7 +8,7 @@ A high-performance, single-file hardware monitoring dashboard designed for **Dee
 
 Stop using `watch -n 1 nvidia-smi`. Get a professional, real-time visual cockpit of your workstation directly in your browser.
 
-![AI Monitor Dashboard](./image/dashboard.png)
+![AI Monitor Demo](./assets/demo.gif)
 
 ## 🚀 Why this monitor?
 
@@ -26,7 +26,7 @@ Most monitoring tools are either too simple (CLI based) or too heavy (Prometheus
 * **Top Processes:** Live table of the most resource-intensive processes (CPU/MEM).
 * **Dark Mode UI:** "Cyberpunk/NVIDIA" aesthetic designed for dark environments.
 
-## 📦 Installation & Usage
+## 📦 Installation
 
 This project uses **[uv](https://github.com/astral-sh/uv)** for ultra-fast dependency management.
 
@@ -36,7 +36,7 @@ This project uses **[uv](https://github.com/astral-sh/uv)** for ultra-fast depen
 
 ### 1. Clone the repository
 ```bash
-git clone [https://github.com/hasso5703/neurodash.git](https://github.com/hasso5703/neurodash.git)
+git clone https://github.com/hasso5703/neurodash.git
 cd neurodash
 ```
 
@@ -46,25 +46,40 @@ Initialize the environment and install dependencies in milliseconds:
 uv sync
 ```
 
-### 3. Run the dashboard
-Launch the monitor directly within the managed environment:
+## 🚀 Usage
+
+### Development / Quick Start
+Launch the monitor directly within the managed environment for testing or personal use:
 ```bash
 uv run main.py
 ```
+*Access:* `http://localhost:9999`
 
-Open your browser and navigate to:
-* **Local:** `http://localhost:9999`
-* **Network:** `http://<YOUR_PC_IP>:9999` (Perfect for monitoring from a tablet/phone)
+### Production Deployment (Recommended)
+For long-running AI workstations, use **Gunicorn** to ensure stability and performance without blocking resources.
+
+1.  **Install Gunicorn** (if not already in `pyproject.toml`):
+    ```bash
+    uv add gunicorn
+    ```
+
+2.  **Launch in Production Mode:**
+    Use this command to run a single worker with multiple threads. This minimizes RAM usage while keeping the interface responsive.
+    ```bash
+    uv run gunicorn -w 1 --threads 4 --worker-class gthread -b 0.0.0.0:9999 main:app
+    ```
+    * `-w 1`: Uses a single process to save memory (avoids duplicating the monitoring history).
+    * `--threads 4`: Handles multiple connections (tabs) simultaneously without blocking.
 
 ## 🔧 Configuration
 
-You can tweak the constants at the top of `main.py`:
+The application is configured via environment variables or default values in `main.py`:
 
-```python
-HOST = "0.0.0.0"      # Listen on all interfaces
-PORT = 9999           # Web server port
-HISTORY_SIZE = 60     # Seconds of history to keep in graphs
-```
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `HOST` | `0.0.0.0` | Listen on all interfaces |
+| `PORT` | `9999` | Web server port |
+| `UPDATE_INTERVAL` | `1000` | Refresh rate in ms |
 
 ## 🛠️ Troubleshooting
 
