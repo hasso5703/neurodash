@@ -58,18 +58,28 @@ uv run main.py
 ### Production Deployment (Recommended)
 For long-running AI workstations, use **Gunicorn** to ensure stability and performance without blocking resources.
 
-1.  **Install Gunicorn** (if not already in `pyproject.toml`):
-    ```bash
-    uv add gunicorn
-    ```
+**Option A: Manual Launch**
+Use this command to run a single worker with multiple threads. This minimizes RAM usage while keeping the interface responsive.
+```bash
+uv run gunicorn -w 1 --threads 4 --worker-class gthread -b 0.0.0.0:9999 main:app
+```
 
-2.  **Launch in Production Mode:**
-    Use this command to run a single worker with multiple threads. This minimizes RAM usage while keeping the interface responsive.
-    ```bash
-    uv run gunicorn -w 1 --threads 4 --worker-class gthread -b 0.0.0.0:9999 main:app
-    ```
-    * `-w 1`: Uses a single process to save memory (avoids duplicating the monitoring history).
-    * `--threads 4`: Handles multiple connections (tabs) simultaneously without blocking.
+**Option B: Auto-Start on Boot (Linux/Ubuntu) 🐧**
+Want the dashboard to start automatically when your workstation turns on?
+We provide a one-line installer that sets up a `systemd` service for you.
+
+1. **Run the installer:**
+   ```bash
+   chmod +x install_service.sh
+   ./install_service.sh
+   ```
+
+2. **That's it!** The service will now run in the background and restart automatically if it crashes.
+
+**Manage the service:**
+* View logs: `sudo journalctl -u neurodash -f`
+* Stop: `sudo systemctl stop neurodash`
+* Restart: `sudo systemctl restart neurodash`
 
 ## 🔧 Configuration
 
