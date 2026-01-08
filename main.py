@@ -1,8 +1,6 @@
 import os
-import time
 import psutil
 import platform
-import threading
 import collections
 from flask import Flask, render_template_string, jsonify
 
@@ -61,7 +59,7 @@ class AdvancedSystemMonitor:
                         raw_name = line.split(":")[1].strip()
                         self.cpu_model = raw_name.replace("(R)", "").replace("(TM)", "").replace(" CPU", "")
                         break
-        except:
+        except Exception:
             self.cpu_model = platform.processor()
 
     def _init_gpu(self):
@@ -70,9 +68,11 @@ class AdvancedSystemMonitor:
                 pynvml.nvmlInit()
                 self.gpu_handle = pynvml.nvmlDeviceGetHandleByIndex(0)
                 self.gpu_name = pynvml.nvmlDeviceGetName(self.gpu_handle)
-                if isinstance(self.gpu_name, bytes): self.gpu_name = self.gpu_name.decode('utf-8')
+                if isinstance(self.gpu_name, bytes): 
+                    self.gpu_name = self.gpu_name.decode('utf-8')
                 self.driver_version = pynvml.nvmlSystemGetDriverVersion()
-                if isinstance(self.driver_version, bytes): self.driver_version = self.driver_version.decode('utf-8')
+                if isinstance(self.driver_version, bytes): 
+                    self.driver_version = self.driver_version.decode('utf-8')
                 self.has_gpu = True
             except Exception as e:
                 print(f"NVIDIA GPU initialization failed: {e}")
@@ -146,13 +146,13 @@ class AdvancedSystemMonitor:
                         power_lim = GPU_POWER_LIMIT
                     else:
                         power_lim = pynvml.nvmlDeviceGetEnforcedPowerLimit(self.gpu_handle) / 1000.0
-                except: 
+                except Exception:
                     power_w, power_lim = 0, 0
                 
                 try:
                     tx = pynvml.nvmlDeviceGetPcieThroughput(self.gpu_handle, pynvml.NVML_PCIE_UTIL_TX_BYTES) / (1024**2)
                     rx = pynvml.nvmlDeviceGetPcieThroughput(self.gpu_handle, pynvml.NVML_PCIE_UTIL_RX_BYTES) / (1024**2)
-                except:
+                except Exception:
                     tx, rx = 0, 0
 
                 self.history["gpu_util"].append(util.gpu)
