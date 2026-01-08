@@ -81,6 +81,27 @@ We provide a one-line installer that sets up a `systemd` service for you.
 * Stop: `sudo systemctl stop neurodash`
 * Restart: `sudo systemctl restart neurodash`
 
+## 🌐 Remote Access
+
+Since the monitor binds to `0.0.0.0`, it is accessible from any device on your network.
+
+### 🏠 Local Network (WiFi/LAN)
+Access the dashboard from your phone or tablet connected to the same WiFi/Ethernet:
+`http://<YOUR_WORKSTATION_IP>:9999`
+
+*(Example: `http://192.168.0.29:9999`)*
+
+> **Tip:** Run `ip addr` or `ifconfig` in your terminal to find your local IP address.
+
+### 🌍 Anywhere Access (Tailscale)
+For secure remote monitoring outside your home (e.g., checking training status from a cafe), we recommend using **[Tailscale](https://tailscale.com/)**.
+
+1. Install Tailscale on both your workstation and your mobile device.
+2. Access the dashboard securely via your workstation's Tailscale IP:
+   `http://<TAILSCALE_IP>:9999`
+
+This method is secure (VPN) and does not require opening ports on your router.
+
 ## 🔧 Configuration
 
 The application is configured via environment variables or default values in `main.py`:
